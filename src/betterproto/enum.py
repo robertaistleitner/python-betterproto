@@ -194,3 +194,8 @@ class Enum(IntEnum if TYPE_CHECKING else int, metaclass=EnumType):
             return cls._member_map_[name]
         except KeyError as e:
             raise ValueError(f"Unknown value {name} for enum {cls.__name__}") from e
+
+    # def __deepcopy__(self, memo: Any) -> Self:
+    #     """Custom deepcopy to mitigate hack with custom constructor to make dataclasses' todict work properly"""
+    #     result = Enum.__new__(cls=Enum, name=self.name, value=self.value)  # type: ignore
+    #     return result

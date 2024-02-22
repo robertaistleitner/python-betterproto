@@ -816,24 +816,25 @@ class Message(ABC):
             message types.
             Raise :class:`AttributeError` on attempts to access unset ``oneof`` fields.
             """
-            try:
-                group_current = super().__getattribute__("_group_current")
-            except AttributeError:
-                pass
-            else:
-                if name not in {"__class__", "_betterproto"}:
-                    group = self._betterproto.oneof_group_by_field.get(name)
-                    if group is not None and group_current[group] != name:
-                        if sys.version_info < (3, 10):
-                            raise AttributeError(
-                                f"{group!r} is set to {group_current[group]!r}, not {name!r}"
-                            )
-                        else:
-                            raise AttributeError(
-                                f"{group!r} is set to {group_current[group]!r}, not {name!r}",
-                                name=name,
-                                obj=self,
-                            )
+            ### THIS BREAKS DATACLASS' `asdict` HELPER!
+            # try:
+            #     group_current = super().__getattribute__("_group_current")
+            # except AttributeError:
+            #     pass
+            # else:
+            #     if name not in {"__class__", "_betterproto"}:
+            #         group = self._betterproto.oneof_group_by_field.get(name)
+            #         if group is not None and group_current[group] != name:
+            #             if sys.version_info < (3, 10):
+            #                 raise AttributeError(
+            #                     f"{group!r} is set to {group_current[group]!r}, not {name!r}"
+            #                 )
+            #             else:
+            #                 raise AttributeError(
+            #                     f"{group!r} is set to {group_current[group]!r}, not {name!r}",
+            #                     name=name,
+            #                     obj=self,
+            #                 )
 
             value = super().__getattribute__(name)
             if value is not PLACEHOLDER:

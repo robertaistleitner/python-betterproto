@@ -9,6 +9,7 @@ from typing import (
     Dict,
     List,
     Mapping,
+    Optional,
 )
 
 from typing_extensions import Self
@@ -1446,6 +1447,8 @@ class FieldMask(betterproto.Message):
     paths: List[str] = betterproto.string_field(1)
     """The set of field mask paths."""
 
+PythonValue = None | float | int | str | bool | Mapping[str, "PythonValue"] | list["PythonValue"]
+PythonStruct = Mapping[str, PythonValue]
 
 @dataclass(eq=False, repr=False)
 class Struct(betterproto.Message):
@@ -1464,16 +1467,15 @@ class Struct(betterproto.Message):
     """Unordered map of dynamically typed values."""
 
     @hybridmethod
-    def from_dict(cls: "type[Self]", value: Mapping[str, Any]) -> Self:  # type: ignore
+    def from_dict(cls: "type[Self]", value: PythonStruct) -> Self:  # type: ignore
         self = cls()
         return self.from_dict(value)
 
     @from_dict.instancemethod
-    def from_dict(self, value: Mapping[str, Any]) -> Self:
-        fields = {**value}
-        for k in fields:
-            if hasattr(fields[k], "from_dict"):
-                fields[k] = fields[k].from_dict()
+    def from_dict(self, value: PythonStruct) -> Self:
+        fields = {**self.fields}
+        for key, val in value.items():
+            fields[key] = Value.from_python(val)
 
         self.fields = fields
         return self
@@ -1482,11 +1484,10 @@ class Struct(betterproto.Message):
         self,
         casing: betterproto.Casing = betterproto.Casing.CAMEL,
         include_default_values: bool = False,
-    ) -> Dict[str, Any]:
-        output = {**self.fields}
+    ) -> PythonStruct:
+        output: PythonStruct = {}
         for k in self.fields:
-            if hasattr(self.fields[k], "to_dict"):
-                output[k] = self.fields[k].to_dict(casing, include_default_values)
+            output[k] = self.fields[k].to_python()
         return output
 
 
@@ -1500,23 +1501,72 @@ class Value(betterproto.Message):
     value.
     """
 
-    null_value: "NullValue" = betterproto.enum_field(1, group="kind")
+    null_value: "Optional[NullValue]" = betterproto.enum_field(1, group="kind")
     """Represents a null value."""
 
-    number_value: float = betterproto.double_field(2, group="kind")
+    number_value: Optional[float] = betterproto.double_field(2, group="kind")
     """Represents a double value."""
 
-    string_value: str = betterproto.string_field(3, group="kind")
+    string_value: Optional[str] = betterproto.string_field(3, group="kind")
     """Represents a string value."""
 
-    bool_value: bool = betterproto.bool_field(4, group="kind")
+    bool_value: Optional[bool] = betterproto.bool_field(4, group="kind")
     """Represents a boolean value."""
 
-    struct_value: "Struct" = betterproto.message_field(5, group="kind")
+    struct_value: "Optional[Struct]" = betterproto.message_field(5, group="kind")
     """Represents a structured value."""
 
-    list_value: "ListValue" = betterproto.message_field(6, group="kind")
+    list_value: "Optional[ListValue]" = betterproto.message_field(6, group="kind")
     """Represents a repeated `Value`."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+    @hybridmethod
+    def from_dict(cls: "type[Self]", value: PythonValue) -> Self:  # type: ignore
+        self = cls()
+        return self.from_dict(value)
+
+    @from_dict.instancemethod
+    def from_dict(self, value: PythonValue) -> Self:
+        return self.from_python(value)
+
+    @hybridmethod
+    def from_python(cls: "type[Self]", value: PythonValue) -> Self:  # type: ignore
+        self = cls()
+        return self.from_python(value)
+
+    @from_python.instancemethod
+    def from_python(self, value: PythonValue) -> Self:  # type: ignore
+        if value is None:
+            self.null_value = NullValue.NULL_VALUE
+        elif isinstance(value, (float, int)):
+            self.number_value = value
+        elif isinstance(value, str):
+            self.string_value = value
+        elif isinstance(value, bool):
+            self.bool_value = value
+        elif isinstance(value, dict):
+            self.struct_value = Struct.from_dict(value)
+        elif isinstance(value, list):
+            self.list_value = ListValue.from_list(value)
+        else:
+            raise ValueError(f"Value cannot be of python type {type(value)}")
+
+        return self
+    
+    def to_python(self) -> PythonValue:
+        if self.is_set("list_value") and self.list_value:
+            return [val.to_python() for val in self.list_value.values]
+        elif self.is_set("struct_value") and self.struct_value:
+            return self.struct_value.to_dict()
+
+        for field in ("number_value", "bool_value", "string_value"):
+            if self.is_set(field):
+                return getattr(self, field)
+
+        # null_value is left
+        return None
 
 
 @dataclass(eq=False, repr=False)
@@ -1528,6 +1578,26 @@ class ListValue(betterproto.Message):
 
     values: List["Value"] = betterproto.message_field(1)
     """Repeated field of dynamically typed values."""
+
+    @hybridmethod
+    def from_dict(cls: "type[Self]", value: Mapping[str, Any]) -> Self:  # type: ignore
+        self = cls()
+        return self.from_dict(value)
+
+    @from_dict.instancemethod
+    def from_dict(self, value: Mapping[str, Any]) -> Self:
+        raise ValueError("ListValue does not support from_dict method.")
+
+    @hybridmethod
+    def from_list(cls: "type[Self]", value: list[PythonValue]) -> Self:  # type: ignore
+        self = cls()
+        return self.from_list(value)
+    
+    @from_list.instancemethod
+    def from_list(self, value: list[PythonValue]) -> Self:  # type: ignore
+        self.values = [Value.from_python(item) for item in value]
+
+        return self
 
 
 @dataclass(eq=False, repr=False)
